@@ -197,24 +197,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // === Configuration ===
   const config = {
-    redirectUri: "https://tomba66.github.io/wit-field-tracer/redirect-github.html",
+    redirectUri: "https://tomba66.github.io/wit-field-tracer-public/redirect.html",
     deliverableFileUrl: "https://workday-cors-proxy.netlify.app/.netlify/functions/receive-file",
     proxyUrl: "https://workday-cors-proxy.netlify.app/.netlify/functions/proxy",
     environments: {
       PRODUCTION: {
         tenantId: "idmcompanies_preview",
-        clientId: "ODBlMTU0N2UtYWI1OS00MmViLWFkMWQtZDA0ZjEzNDA0MTc3",
-        authEndpoint: "https://impl.workday.com/idmcompanies_preview/authorize",
+        clientId: "ZTU5ZDQ2OGUtNWUyNC00MDQ1LThkYmYtMWM3MmVjZDZlODNl",
+        authEndpoint: "https://impl.wd503.myworkday.com/bonadio_preview/authorize",
         tokenEndpoint: "https://wd2-impl-services1.workday.com/ccx/oauth2/idmcompanies_preview/token",
-        launchUrl: "https://e2-impl-cci.workday.com/ccx/cc-cloud-repo/launches/WIT_Workday_Field_Tracer/WIT_Workday_Field_Tracer/In",
+        launchUrl: "https://e2-impl-cci.workday.com/ccx/cc-cloud-repo/launches/Wit_Field_Tracer/Wit_Field_Tracer/In",
         soapUrl:  "https://wd2-impl-services1.workday.com/ccx/service/idmcompanies_preview/Integrations/v44.1"
       },
       SANDBOX: {
         tenantId: "idmcompanies_preview",
         clientId: "ODBlMTU0N2UtYWI1OS00MmViLWFkMWQtZDA0ZjEzNDA0MTc3",
-        authEndpoint: "https://impl.workday.com/idmcompanies_preview/authorize",
-        tokenEndpoint: "https://wd2-impl-services1.workday.com/ccx/oauth2/idmcompanies_preview/token",
-        launchUrl: "https://e2-impl-cci.workday.com/ccx/cc-cloud-repo/launches/WIT_Workday_Field_Tracer/WIT_Workday_Field_Tracer/In",
+        authEndpoint: "https://impl.wd503.myworkday.com/bonadio_preview/authorize",
+        tokenEndpoint: "https://impl-services1.wd503.myworkday.com/ccx/oauth2/bonadio_preview/token",
+        launchUrl: "https://e2-impl-cci.workday.com/ccx/cc-cloud-repo/launches/Wit_Field_Tracer/Wit_Field_Tracer/In",
         soapUrl: "https://wd2-impl-services1.workday.com/ccx/service/idmcompanies_preview/Integrations/v44.1"
       }
     }
