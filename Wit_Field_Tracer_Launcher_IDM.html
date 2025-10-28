@@ -195,39 +195,116 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   setDesignFromCSS();
 
-  // === Configuration ===
-  const config = {
-    redirectUri: "https://tomba66.github.io/wit-field-tracer-public/redirect.html",
-    deliverableFileUrl: "https://workday-cors-proxy.netlify.app/.netlify/functions/receive-file",
-    proxyUrl: "https://workday-cors-proxy.netlify.app/.netlify/functions/proxy",
-    environments: {
-      PRODUCTION: {
-        tenantId: "idmcompanies_preview",
-        clientId: "MGJkMGNhMjYtZDM5YS00MDM0LThiMTUtYjQzNTljMTg2NmUw",
-        authEndpoint: "https://impl.workday.com/idmcompanies_preview/authorize?redirect=n",
-        tokenEndpoint: "https://wd2-impl-services1.workday.com/ccx/oauth2/idmcompanies_preview/token",
-        launchUrl: "https://e2-impl-cci.workday.com/ccx/cc-cloud-repo/launches/Wit_Field_Tracer/Wit_Field_Tracer/In",
-        soapUrl:  "https://wd2-impl-services1.workday.com/ccx/service/idmcompanies_preview/Integrations/v44.1"
-      },
-      SANDBOX: {
-        tenantId: "idmcompanies_preview",
-        clientId: "MGJkMGNhMjYtZDM5YS00MDM0LThiMTUtYjQzNTljMTg2NmUw",
-        authEndpoint: "https://impl.workday.com/idmcompanies_preview/authorize",
-        tokenEndpoint: "https://wd2-impl-services1.workday.com/ccx/oauth2/idmcompanies_preview/token",
-        launchUrl: "https://e2-impl-cci.workday.com/ccx/cc-cloud-repo/launches/Wit_Field_Tracer/Wit_Field_Tracer/In",
-        soapUrl: "https://wd2-impl-services1.workday.com/ccx/service/idmcompanies_preview/Integrations/v44.1"
-      }
-    }
-  };
-
+  let CONFIG = {};
   let selectedEnv = "PRODUCTION";
-
+  await loadConfig();
+	
   const loginBtn = document.getElementById("loginBtn");
   const launchBtn = document.getElementById("launchBtn");
   const envSelect = document.getElementById("envSelect");
   const statusDiv = document.getElementById("status");
   const refreshBtn = document.getElementById("refreshBtn");
 
+async function loadConfig() {
+  try {
+    const response = await fetch("config.json", { cache: "no-cache" });
+    if (!response.ok) throw new Error(`Failed to load config.json (${response.status})`);
+
+    const json = await response.json();
+    const errors = [];
+    const validEnvs = [];
+    const requiredServerKeys = ["redirectUri", "deliverableFileUrl", "proxyUrl"];
+    const envKeys = ["tenantId", "clientId", "authEndpoint", "tokenEndpoint", "launchUrl", "soapUrl"];
+
+    // --- SERVER VALIDATION ---
+    for (const key of requiredServerKeys) {
+      const value = json.server?.[key];
+      if (!value || value.includes("[") || value.includes("]")) {
+        errors.push(`Missing or invalid value for server.${key}`);
+      }
+    }
+
+    // --- ENVIRONMENT VALIDATION ---
+    const envs = Object.keys(json.environments || {});
+    for (const env of envs) {
+      const envConfig = json.environments[env];
+      const missing = [];
+
+      for (const key of envKeys) {
+        const value = envConfig?.[key];
+        if (!value || value.includes("[") || value.includes("]")) {
+          missing.push(key);
+        }
+      }
+
+      if (missing.length === 0) {
+        validEnvs.push(env);
+      } else {
+        console.warn(`⚠️ Environment "${env}" invalid or incomplete: ${missing.join(", ")}`);
+        disableEnvironmentOption(env, true);
+      }
+    }
+
+    // --- DEFAULT ENVIRONMENT SELECTION ---
+    if (validEnvs.length === 0) {
+      errors.push("No valid environment configuration found (at least one must be fully populated).");
+    } else if (!validEnvs.includes("PRODUCTION") && validEnvs.includes("SANDBOX")) {
+      selectedEnv = "SANDBOX";
+      console.info("Defaulting to SANDBOX (PRODUCTION invalid).");
+      const select = document.getElementById("envSelect");
+      if (select) select.value = "SANDBOX";
+    } else {
+      selectedEnv = "PRODUCTION";
+      const select = document.getElementById("envSelect");
+      if (select) select.value = "PRODUCTION";
+    }
+
+    // --- ERROR HANDLING ---
+    if (errors.length > 0) {
+      const message = `⚠️ Configuration Error:\n${errors.join("\n")}`;
+      updateStatus(message);
+      disableActionButtons(true);
+      throw new Error(message);
+    }
+
+    // ✅ SUCCESS
+    CONFIG = json;
+    console.log("Configuration loaded. Valid environments:", validEnvs);
+    updateStatus(`✅ Configuration successfully loaded. Active environment: ${selectedEnv}`);
+    disableActionButtons(false);
+    return true;
+
+  } catch (err) {
+    console.error(err);
+    updateStatus(`❌ Error loading configuration: ${err.message}`);
+    disableActionButtons(true);
+    return false;
+  }
+}
+	
+  function disableActionButtons(disable = true) {
+    const ids = ["loginButton", "launchButton"];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.disabled = disable;
+        el.style.opacity = disable ? "0.5" : "1";
+        el.style.cursor = disable ? "not-allowed" : "pointer";
+      }
+    });
+  }
+
+function disableEnvironmentOption(envName, disable = true) {
+  const select = document.getElementById("envSelect");
+  if (!select) return;
+  const option = Array.from(select.options).find(opt => opt.value === envName);
+  if (option) {
+    option.disabled = disable;
+    option.textContent = disable ? `${envName} (invalid)` : envName;
+  }
+}
+
+	
   function updateStatus(msg) {
     statusDiv.textContent = msg;
   }
