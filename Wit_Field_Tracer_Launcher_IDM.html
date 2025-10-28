@@ -197,7 +197,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let CONFIG = {};
   let selectedEnv = "PRODUCTION";
-  await loadConfig();
+
+  updateStatus("🔄 Loading configuration...");
+  const configLoaded = await loadConfig(); // ⬅️ itt fut le először
+  if (!configLoaded) {
+    console.error("Config could not be loaded. Blocking UI actions.");
+    disableActionButtons(true);
+    return;
+  }
 	
   const loginBtn = document.getElementById("loginBtn");
   const launchBtn = document.getElementById("launchBtn");
