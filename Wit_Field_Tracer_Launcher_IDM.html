@@ -176,7 +176,7 @@
 	}	
 </style>
 <script>
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
 
   // === UI DESIGN SYNC ===
   function setDesignFromCSS() {
@@ -196,10 +196,10 @@ document.addEventListener("DOMContentLoaded", function () {
   let selectedEnv = "PRODUCTION";
 
   // === DOM ELEMENTS ===
-  const loginBtn = document.getElementById("loginBtn");
-  const launchBtn = document.getElementById("launchBtn");
-  const envSelect = document.getElementById("envSelect");
-  const statusDiv = document.getElementById("status");
+  const loginBtn   = document.getElementById("loginBtn");
+  const launchBtn  = document.getElementById("launchBtn");
+  const envSelect  = document.getElementById("envSelect");
+  const statusDiv  = document.getElementById("status");
   const refreshBtn = document.getElementById("refreshBtn");
 
   function updateStatus(msg) {
@@ -207,11 +207,12 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function disableActionButtons(disable = true) {
-    loginBtn.disabled = disable;
-    launchBtn.disabled = disable;
+    if (loginBtn)  loginBtn.disabled  = disable;
+    if (launchBtn) launchBtn.disabled = disable;
   }
 
   function disableEnvironmentOption(envName, disable = true) {
+    if (!envSelect) return;
     const option = Array.from(envSelect.options).find(opt => opt.value === envName);
     if (option) {
       option.disabled = disable;
@@ -219,7 +220,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // === CONFIG LOADER ===
+  // === CONFIG LOADER (with validation) ===
   async function loadConfig() {
     try {
       const response = await fetch("config.json", { cache: "no-cache" });
@@ -231,7 +232,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const requiredServerKeys = ["redirectUri", "deliverableFileUrl", "proxyUrl"];
       const envKeys = ["tenantId", "clientId", "authEndpoint", "tokenEndpoint", "launchUrl", "soapUrl"];
 
-      // Validate server section
+      // Server validation
       for (const key of requiredServerKeys) {
         const value = json.server?.[key];
         if (!value || value.includes("[") || value.includes("]")) {
@@ -239,7 +240,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
 
-      // Validate environments
+      // Environment validation
       const envs = Object.keys(json.environments || {});
       for (const env of envs) {
         const envConfig = json.environments[env];
@@ -260,22 +261,22 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
 
-      // Default environment selection
+      // Default env selection: PROD → SANDBOX → (mindegy)
       if (validEnvs.length === 0) {
-        errors.push("No valid environment configuration found (at least one must be complete).");
+        errors.push("No valid environment configuration found (at least one must be fully populated).");
       } else if (!validEnvs.includes("PRODUCTION") && validEnvs.includes("SANDBOX")) {
         selectedEnv = "SANDBOX";
-        envSelect.value = "SANDBOX";
+        if (envSelect) envSelect.value = "SANDBOX";
         console.info("Defaulting to SANDBOX (PRODUCTION invalid).");
       } else {
         selectedEnv = "PRODUCTION";
-        envSelect.value = "PRODUCTION";
+        if (envSelect) envSelect.value = "PRODUCTION";
       }
 
       if (errors.length > 0) {
         updateStatus(`⚠️ Configuration Error:\n${errors.join("\n")}`);
         disableActionButtons(true);
-        throw new Error(errors.join(", "));
+        return false;
       }
 
       CONFIG = json;
@@ -299,9 +300,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const verifier = base64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
     localStorage.setItem("code_verifier", verifier);
 
-    const challenge = base64urlEncode(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+    const challengeBuf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    const challenge = base64urlEncode(challengeBuf);
 
-    const authUrl = `${env.authEndpoint}?response_type=code&client_id=${encodeURIComponent(env.clientId)}&redirect_uri=${encodeURIComponent(CONFIG.server.redirectUri)}&code_challenge=${challenge}&code_challenge_method=S256`;
+    const authUrl =
+      `${env.authEndpoint}?response_type=code` +
+      `&client_id=${encodeURIComponent(env.clientId)}` +
+      `&redirect_uri=${encodeURIComponent(CONFIG.server.redirectUri)}` +
+      `&code_challenge=${challenge}&code_challenge_method=S256`;
 
     window.open(authUrl, "_blank", "width=450,height=580,top=35,left=300");
   }
@@ -333,7 +339,8 @@ document.addEventListener("DOMContentLoaded", function () {
       } else {
         updateStatus("❌ Token error.");
       }
-    } catch {
+    } catch (e) {
+      console.error(e);
       updateStatus("❌ Network error during token exchange.");
     }
   }
@@ -381,20 +388,20 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       updateStatus("🚀 Integration launched. Monitoring progress...");
-      monitorIntegrationStatus(eventRef, accessToken);
+      await monitorIntegrationStatus(eventRef, accessToken);
 
-    } catch {
+    } catch (e) {
+      console.error(e);
       updateStatus("❌ Network error during launch.");
     }
   }
 
   async function monitorIntegrationStatus(eventWID, accessToken) {
-    const selectedEnv = envSelect.value;
-    const env = CONFIG.environments[selectedEnv];
+    const env = CONFIG.environments[envSelect.value];
     let autoCheckInterval = null;
     refreshBtn.classList.remove("hidden");
 
-    async function checkStatusAndMaybeDownload() {
+    const checkStatusAndMaybeDownload = async () => {
       updateStatus("🔍 Checking integration status...");
 
       const soapBody = `
@@ -423,7 +430,10 @@ document.addEventListener("DOMContentLoaded", function () {
           body: JSON.stringify({
             targetUrl: env.soapUrl,
             method: "POST",
-            headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "text/xml" },
+            headers: {
+              "Authorization": `Bearer ${accessToken}`,
+              "Content-Type": "text/xml"
+            },
             body: soapBody
           })
         });
@@ -442,15 +452,28 @@ document.addEventListener("DOMContentLoaded", function () {
           env: "http://schemas.xmlsoap.org/soap/envelope/"
         })[prefix] || null;
 
-        const statusNode = xml.evaluate("//wd:Event_State_Reference/@wd:Descriptor", xml, nsResolver, XPathResult.STRING_TYPE, null);
+        const statusNode = xml.evaluate(
+          "//wd:Event_State_Reference/@wd:Descriptor",
+          xml,
+          nsResolver,
+          XPathResult.STRING_TYPE,
+          null
+        );
+
         const status = statusNode.stringValue || "Unknown";
         updateStatus(`📄 Integration Status: ${status}`);
 
         if (status.toLowerCase() !== "in progress") {
           clearInterval(autoCheckInterval);
+
           if (status.toLowerCase() === "successfully completed") {
             updateStatus("✅ Integration completed. Downloading file...");
-            await downloadDeliveredFile();
+            try {
+              await downloadDeliveredFile();
+            } catch (err) {
+              console.error(err);
+              updateStatus("❌ File download failed.");
+            }
           } else {
             updateStatus(`⚠ Integration stopped with status: ${status}`);
           }
@@ -461,10 +484,15 @@ document.addEventListener("DOMContentLoaded", function () {
         updateStatus("❌ Failed to retrieve status.");
         clearInterval(autoCheckInterval);
       }
-    }
+    };
 
+    // Manual refresh
     refreshBtn.onclick = checkStatusAndMaybeDownload;
+
+    // Auto-check every 30s
     autoCheckInterval = setInterval(checkStatusAndMaybeDownload, 30000);
+    // (opcionális) induljon azonnal egy első ellenőrzéssel:
+    await checkStatusAndMaybeDownload();
   }
 
   async function downloadDeliveredFile() {
@@ -472,9 +500,10 @@ document.addEventListener("DOMContentLoaded", function () {
       updateStatus("📥 Downloading integration output...");
       const res = await fetch(CONFIG.server.deliverableFileUrl, { method: "GET" });
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition");
-      let fileName = getFilenameFromDisposition(disposition) || "download.html";
+      const fileName = getFilenameFromDisposition(disposition) || "download.html";
 
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -482,8 +511,10 @@ document.addEventListener("DOMContentLoaded", function () {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+
       updateStatus("✅ File downloaded successfully.");
-    } catch {
+    } catch (e) {
+      console.error(e);
       updateStatus("❌ Failed to download file.");
     }
   }
@@ -491,7 +522,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function getFilenameFromDisposition(disposition) {
     if (!disposition) return null;
     const matchQuoted = disposition.match(/filename="([^"]+)"/);
-    return matchQuoted && matchQuoted[1] ? matchQuoted[1] : null;
+    return (matchQuoted && matchQuoted[1]) ? matchQuoted[1] : null;
   }
 
   function base64urlEncode(buffer) {
@@ -499,18 +530,21 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
 
-  // === INITIALIZATION SEQUENCE ===
+  // === INIT SEQUENCE (await inside async DOMContentLoaded) ===
   updateStatus("🔄 Loading configuration...");
-  loadConfig().then(success => {
-    if (!success) {
-      disableActionButtons(true);
-      return;
-    }
-    loginBtn.addEventListener("click", startOAuthLogin);
-    launchBtn.addEventListener("click", launchIntegration);
-    updateStatus("✅ Configuration ready. Please log in.");
-  });
+  const ok = await loadConfig();
+  if (!ok) {
+    disableActionButtons(true);
+    return;
+  }
 
+  // csak sikeres config után engedjük a gombokat és eseményeket
+  if (loginBtn)  loginBtn.addEventListener("click", startOAuthLogin);
+  if (launchBtn) launchBtn.addEventListener("click", launchIntegration);
+
+  updateStatus("✅ Configuration ready. Please log in.");
+
+  // OAuth popup → redirect.html postMessage
   window.addEventListener("message", (event) => {
     if (event.data?.type === "oauth-code") exchangeToken(event.data.code);
   });
