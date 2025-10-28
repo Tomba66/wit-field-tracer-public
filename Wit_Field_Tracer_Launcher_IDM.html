@@ -178,167 +178,142 @@
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
+  // === UI DESIGN SYNC ===
   function setDesignFromCSS() {
-	  //Displaying client logo in the header using CSS variable
-	  const cssClientLogo = getComputedStyle(
-	    document.documentElement
-	  ).getPropertyValue("--client_logo");
-	  const clMatch = cssClientLogo.match(/url\("?(.*?)"?\)/);
-	  if (clMatch) {
-	    document.querySelector(".client-logo img").src = clMatch[1];
-	  }
+    const cssClientLogo = getComputedStyle(document.documentElement).getPropertyValue("--client_logo");
+    const clMatch = cssClientLogo.match(/url\("?(.*?)"?\)/);
+    if (clMatch) document.querySelector(".client-logo img").src = clMatch[1];
+
     document.querySelector(".wd-logo img").src =
       getComputedStyle(document.documentElement).getPropertyValue("--workday_logo").match(/url\("?(.*?)"?\)/)[1];
-
     document.querySelector(".footer-logo").src =
       getComputedStyle(document.documentElement).getPropertyValue("--footer_logo").match(/url\("?(.*?)"?\)/)[1];
   }
   setDesignFromCSS();
 
+  // === GLOBAL STATE ===
   let CONFIG = {};
   let selectedEnv = "PRODUCTION";
 
-  updateStatus("🔄 Loading configuration...");
-  const configLoaded = loadConfig(); // ⬅️ itt fut le először
-  if (!configLoaded) {
-    console.error("Config could not be loaded. Blocking UI actions.");
-    disableActionButtons(true);
-    return;
-  }
-	
+  // === DOM ELEMENTS ===
   const loginBtn = document.getElementById("loginBtn");
   const launchBtn = document.getElementById("launchBtn");
   const envSelect = document.getElementById("envSelect");
   const statusDiv = document.getElementById("status");
   const refreshBtn = document.getElementById("refreshBtn");
 
-function loadConfig() {
-  try {
-    const response = await fetch("config.json", { cache: "no-cache" });
-    if (!response.ok) throw new Error(`Failed to load config.json (${response.status})`);
-
-    const json = await response.json();
-    const errors = [];
-    const validEnvs = [];
-    const requiredServerKeys = ["redirectUri", "deliverableFileUrl", "proxyUrl"];
-    const envKeys = ["tenantId", "clientId", "authEndpoint", "tokenEndpoint", "launchUrl", "soapUrl"];
-
-    // --- SERVER VALIDATION ---
-    for (const key of requiredServerKeys) {
-      const value = json.server?.[key];
-      if (!value || value.includes("[") || value.includes("]")) {
-        errors.push(`Missing or invalid value for server.${key}`);
-      }
-    }
-
-    // --- ENVIRONMENT VALIDATION ---
-    const envs = Object.keys(json.environments || {});
-    for (const env of envs) {
-      const envConfig = json.environments[env];
-      const missing = [];
-
-      for (const key of envKeys) {
-        const value = envConfig?.[key];
-        if (!value || value.includes("[") || value.includes("]")) {
-          missing.push(key);
-        }
-      }
-
-      if (missing.length === 0) {
-        validEnvs.push(env);
-      } else {
-        console.warn(`⚠️ Environment "${env}" invalid or incomplete: ${missing.join(", ")}`);
-        disableEnvironmentOption(env, true);
-      }
-    }
-
-    // --- DEFAULT ENVIRONMENT SELECTION ---
-    if (validEnvs.length === 0) {
-      errors.push("No valid environment configuration found (at least one must be fully populated).");
-    } else if (!validEnvs.includes("PRODUCTION") && validEnvs.includes("SANDBOX")) {
-      selectedEnv = "SANDBOX";
-      console.info("Defaulting to SANDBOX (PRODUCTION invalid).");
-      const select = document.getElementById("envSelect");
-      if (select) select.value = "SANDBOX";
-    } else {
-      selectedEnv = "PRODUCTION";
-      const select = document.getElementById("envSelect");
-      if (select) select.value = "PRODUCTION";
-    }
-
-    // --- ERROR HANDLING ---
-    if (errors.length > 0) {
-      const message = `⚠️ Configuration Error:\n${errors.join("\n")}`;
-      updateStatus(message);
-      disableActionButtons(true);
-      throw new Error(message);
-    }
-
-    // ✅ SUCCESS
-    CONFIG = json;
-    console.log("Configuration loaded. Valid environments:", validEnvs);
-    updateStatus(`✅ Configuration successfully loaded. Active environment: ${selectedEnv}`);
-    disableActionButtons(false);
-    return true;
-
-  } catch (err) {
-    console.error(err);
-    updateStatus(`❌ Error loading configuration: ${err.message}`);
-    disableActionButtons(true);
-    return false;
-  }
-}
-	
-  function disableActionButtons(disable = true) {
-    const ids = ["loginButton", "launchButton"];
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.disabled = disable;
-        el.style.opacity = disable ? "0.5" : "1";
-        el.style.cursor = disable ? "not-allowed" : "pointer";
-      }
-    });
-  }
-
-function disableEnvironmentOption(envName, disable = true) {
-  const select = document.getElementById("envSelect");
-  if (!select) return;
-  const option = Array.from(select.options).find(opt => opt.value === envName);
-  if (option) {
-    option.disabled = disable;
-    option.textContent = disable ? `${envName} (invalid)` : envName;
-  }
-}
-
-	
   function updateStatus(msg) {
     statusDiv.textContent = msg;
   }
 
+  function disableActionButtons(disable = true) {
+    loginBtn.disabled = disable;
+    launchBtn.disabled = disable;
+  }
+
+  function disableEnvironmentOption(envName, disable = true) {
+    const option = Array.from(envSelect.options).find(opt => opt.value === envName);
+    if (option) {
+      option.disabled = disable;
+      option.textContent = disable ? `${envName} (invalid)` : envName;
+    }
+  }
+
+  // === CONFIG LOADER ===
+  async function loadConfig() {
+    try {
+      const response = await fetch("config.json", { cache: "no-cache" });
+      if (!response.ok) throw new Error(`Failed to load config.json (${response.status})`);
+
+      const json = await response.json();
+      const errors = [];
+      const validEnvs = [];
+      const requiredServerKeys = ["redirectUri", "deliverableFileUrl", "proxyUrl"];
+      const envKeys = ["tenantId", "clientId", "authEndpoint", "tokenEndpoint", "launchUrl", "soapUrl"];
+
+      // Validate server section
+      for (const key of requiredServerKeys) {
+        const value = json.server?.[key];
+        if (!value || value.includes("[") || value.includes("]")) {
+          errors.push(`Missing or invalid value for server.${key}`);
+        }
+      }
+
+      // Validate environments
+      const envs = Object.keys(json.environments || {});
+      for (const env of envs) {
+        const envConfig = json.environments[env];
+        const missing = [];
+
+        for (const key of envKeys) {
+          const value = envConfig?.[key];
+          if (!value || value.includes("[") || value.includes("]")) {
+            missing.push(key);
+          }
+        }
+
+        if (missing.length === 0) {
+          validEnvs.push(env);
+        } else {
+          console.warn(`⚠️ Environment "${env}" invalid or incomplete: ${missing.join(", ")}`);
+          disableEnvironmentOption(env, true);
+        }
+      }
+
+      // Default environment selection
+      if (validEnvs.length === 0) {
+        errors.push("No valid environment configuration found (at least one must be complete).");
+      } else if (!validEnvs.includes("PRODUCTION") && validEnvs.includes("SANDBOX")) {
+        selectedEnv = "SANDBOX";
+        envSelect.value = "SANDBOX";
+        console.info("Defaulting to SANDBOX (PRODUCTION invalid).");
+      } else {
+        selectedEnv = "PRODUCTION";
+        envSelect.value = "PRODUCTION";
+      }
+
+      if (errors.length > 0) {
+        updateStatus(`⚠️ Configuration Error:\n${errors.join("\n")}`);
+        disableActionButtons(true);
+        throw new Error(errors.join(", "));
+      }
+
+      CONFIG = json;
+      updateStatus(`✅ Configuration loaded. Active environment: ${selectedEnv}`);
+      disableActionButtons(false);
+      return true;
+
+    } catch (err) {
+      console.error(err);
+      updateStatus(`❌ Error loading configuration: ${err.message}`);
+      disableActionButtons(true);
+      return false;
+    }
+  }
+
+  // === OAUTH LOGIN ===
   async function startOAuthLogin() {
     selectedEnv = envSelect.value;
-    const env = config.environments[selectedEnv];
+    const env = CONFIG.environments[selectedEnv];
 
     const verifier = base64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
     localStorage.setItem("code_verifier", verifier);
 
     const challenge = base64urlEncode(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
 
-    const authUrl = `${env.authEndpoint}?response_type=code&client_id=${encodeURIComponent(env.clientId)}&redirect_uri=${encodeURIComponent(config.redirectUri)}&code_challenge=${challenge}&code_challenge_method=S256`;
+    const authUrl = `${env.authEndpoint}?response_type=code&client_id=${encodeURIComponent(env.clientId)}&redirect_uri=${encodeURIComponent(CONFIG.server.redirectUri)}&code_challenge=${challenge}&code_challenge_method=S256`;
 
-    //window.open(authUrl, "_blank", "width=600,height=700");
-	  window.open(authUrl, "_blank", "width=450,height=580,top=35,left=300");
+    window.open(authUrl, "_blank", "width=450,height=580,top=35,left=300");
   }
 
   async function exchangeToken(code) {
-    const env = config.environments[selectedEnv];
+    const env = CONFIG.environments[selectedEnv];
     const verifier = localStorage.getItem("code_verifier");
 
     const formData = new URLSearchParams({
       grant_type: "authorization_code",
       client_id: env.clientId,
-      redirect_uri: config.redirectUri,
+      redirect_uri: CONFIG.server.redirectUri,
       code_verifier: verifier,
       code
     });
@@ -364,7 +339,7 @@ function disableEnvironmentOption(envName, disable = true) {
   }
 
   async function launchIntegration() {
-    const env = config.environments[selectedEnv];
+    const env = CONFIG.environments[selectedEnv];
     const accessToken = sessionStorage.getItem("access_token");
 
     if (!accessToken) {
@@ -375,13 +350,17 @@ function disableEnvironmentOption(envName, disable = true) {
     updateStatus("🚀 Launching integration...");
 
     try {
-      const response = await fetch(config.proxyUrl, {
+      const response = await fetch(CONFIG.server.proxyUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           targetUrl: env.launchUrl,
           method: "POST",
-          headers: { "Authorization": `Bearer ${accessToken}`, "X-Tenant": env.tenantId.toLowerCase(), "Content-Type": "text/plain" },
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "X-Tenant": env.tenantId.toLowerCase(),
+            "Content-Type": "text/plain"
+          },
           body: ""
         })
       });
@@ -401,7 +380,7 @@ function disableEnvironmentOption(envName, disable = true) {
         return;
       }
 
-      updateStatus("🚀 Integration launched. Use Refresh Status button or wait for automatic updates to monitor progress.");
+      updateStatus("🚀 Integration launched. Monitoring progress...");
       monitorIntegrationStatus(eventRef, accessToken);
 
     } catch {
@@ -409,169 +388,134 @@ function disableEnvironmentOption(envName, disable = true) {
     }
   }
 
- function monitorIntegrationStatus(eventWID, accessToken) {
-  const refreshBtn = document.getElementById("refreshBtn");
-  const selectedEnv = document.getElementById("envSelect").value;
-  const env = config.environments[selectedEnv];
+  async function monitorIntegrationStatus(eventWID, accessToken) {
+    const selectedEnv = envSelect.value;
+    const env = CONFIG.environments[selectedEnv];
+    let autoCheckInterval = null;
+    refreshBtn.classList.remove("hidden");
 
-  let autoCheckInterval = null;
+    async function checkStatusAndMaybeDownload() {
+      updateStatus("🔍 Checking integration status...");
 
-  refreshBtn.classList.remove("hidden");
+      const soapBody = `
+        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:bsvc="urn:com.workday/bsvc">
+          <soapenv:Header>
+            <bsvc:Workday_Common_Header>
+              <bsvc:Include_Reference_Descriptors_In_Response>1</bsvc:Include_Reference_Descriptors_In_Response>
+            </bsvc:Workday_Common_Header>
+          </soapenv:Header>
+          <soapenv:Body>
+            <bsvc:Get_Event_Details_Request bsvc:version="v44.1">
+              <bsvc:Request_References>
+                <bsvc:Event_Reference>
+                  <bsvc:ID bsvc:type="WID">${eventWID}</bsvc:ID>
+                </bsvc:Event_Reference>
+              </bsvc:Request_References>
+            </bsvc:Get_Event_Details_Request>
+          </soapenv:Body>
+        </soapenv:Envelope>
+      `.trim();
 
-  async function checkStatusAndMaybeDownload() {
-    updateStatus("🔍 Checking integration status...");
+      try {
+        const res = await fetch(CONFIG.server.proxyUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetUrl: env.soapUrl,
+            method: "POST",
+            headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "text/xml" },
+            body: soapBody
+          })
+        });
 
-    const soapBody = `
-      <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:bsvc="urn:com.workday/bsvc">
-        <soapenv:Header>
-          <bsvc:Workday_Common_Header>
-            <bsvc:Include_Reference_Descriptors_In_Response>1</bsvc:Include_Reference_Descriptors_In_Response>
-          </bsvc:Workday_Common_Header>
-        </soapenv:Header>
-        <soapenv:Body>
-          <bsvc:Get_Event_Details_Request bsvc:version="v44.1">
-            <bsvc:Request_References>
-              <bsvc:Event_Reference>
-                <bsvc:ID bsvc:type="WID">${eventWID}</bsvc:ID>
-              </bsvc:Event_Reference>
-            </bsvc:Request_References>
-          </bsvc:Get_Event_Details_Request>
-        </soapenv:Body>
-      </soapenv:Envelope>
-    `.trim();
+        if (!res.ok) {
+          updateStatus(`❌ Status check failed: HTTP ${res.status}`);
+          clearInterval(autoCheckInterval);
+          return;
+        }
 
-    const proxyRequest = {
-      targetUrl: env.soapUrl,
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "text/xml"
-      },
-      body: soapBody
-    };
+        const text = await res.text();
+        const xml = new DOMParser().parseFromString(text, "application/xml");
 
-    try {
-      const res = await fetch(config.proxyUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(proxyRequest)
-      });
-
-      if (!res.ok) {
-        updateStatus(`❌ Status check failed: HTTP ${res.status}`);
-        clearInterval(autoCheckInterval);
-        return;
-      }
-
-      const text = await res.text();
-      const xml = new DOMParser().parseFromString(text, "application/xml");
-
-      const nsResolver = prefix => {
-        const ns = {
+        const nsResolver = prefix => ({
           wd: "urn:com.workday/bsvc",
           env: "http://schemas.xmlsoap.org/soap/envelope/"
-        };
-        return ns[prefix] || null;
-      };
+        })[prefix] || null;
 
-      const statusNode = xml.evaluate(
-        "//wd:Event_State_Reference/@wd:Descriptor",
-        xml,
-        nsResolver,
-        XPathResult.STRING_TYPE,
-        null
-      );
+        const statusNode = xml.evaluate("//wd:Event_State_Reference/@wd:Descriptor", xml, nsResolver, XPathResult.STRING_TYPE, null);
+        const status = statusNode.stringValue || "Unknown";
+        updateStatus(`📄 Integration Status: ${status}`);
 
-      const status = statusNode.stringValue || "Unknown";
-      updateStatus(`📄 Integration Status: ${status}`);
-
-      // Stop polling if status is not "Processing"
-      if (status.toLowerCase() !== "in progress") {
-        clearInterval(autoCheckInterval);
-
-        if (status.toLowerCase() === "successfully completed") {
-          updateStatus("✅ Integration completed. Downloading file...");
-          try {
+        if (status.toLowerCase() !== "in progress") {
+          clearInterval(autoCheckInterval);
+          if (status.toLowerCase() === "successfully completed") {
+            updateStatus("✅ Integration completed. Downloading file...");
             await downloadDeliveredFile();
-          } catch (err) {
-            updateStatus("❌ File download failed.");
-            console.error(err);
+          } else {
+            updateStatus(`⚠ Integration stopped with status: ${status}`);
           }
-        } else {
-          updateStatus(`⚠ Integration stopped with status: ${status}`);
         }
+
+      } catch (err) {
+        console.error("❌ Status check failed:", err);
+        updateStatus("❌ Failed to retrieve status.");
+        clearInterval(autoCheckInterval);
       }
-
-    } catch (err) {
-      console.error("❌ Status check failed:", err);
-      updateStatus("❌ Failed to retrieve status.");
-      clearInterval(autoCheckInterval); // Stop polling on fatal error
     }
+
+    refreshBtn.onclick = checkStatusAndMaybeDownload;
+    autoCheckInterval = setInterval(checkStatusAndMaybeDownload, 30000);
   }
-
-  // Manual refresh button
-  refreshBtn.onclick = checkStatusAndMaybeDownload;
-
-  // Auto-check every 30 seconds until integration stops or fails
-  autoCheckInterval = setInterval(checkStatusAndMaybeDownload, 30000);
-}
 
   async function downloadDeliveredFile() {
     try {
       updateStatus("📥 Downloading integration output...");
-
-      const res = await fetch(config.deliverableFileUrl, { method: "GET" });
-
+      const res = await fetch(CONFIG.server.deliverableFileUrl, { method: "GET" });
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
-
       const blob = await res.blob();
-      const disposition = res.headers.get("Content-Disposition");		
-	  let fileName = getFilenameFromDisposition(disposition) || "download.html";
+      const disposition = res.headers.get("Content-Disposition");
+      let fileName = getFilenameFromDisposition(disposition) || "download.html";
 
       const a = document.createElement("a");
-	  a.href = URL.createObjectURL(blob);
-	  a.download = fileName;
-	  document.body.appendChild(a);
-	  a.click();
-	  document.body.removeChild(a);
-
+      a.href = URL.createObjectURL(blob);
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       updateStatus("✅ File downloaded successfully.");
-
     } catch {
       updateStatus("❌ Failed to download file.");
     }
   }
 
   function getFilenameFromDisposition(disposition) {
-	  if (!disposition) {
-		return null;
-	  }
-	
-	  // Get filename
-	  const matchQuoted = disposition.match(/filename="([^"]+)"/);
-	  console.log("Match Quoted Filename: ", matchQuoted);
-	  if (matchQuoted && matchQuoted[1]) {
-		console.log("Matchquoted array #1 element found", matchQuoted[1]);
-	    return matchQuoted[1];
-	  }
-
-	  // No match → return null
-	  return null;
+    if (!disposition) return null;
+    const matchQuoted = disposition.match(/filename="([^"]+)"/);
+    return matchQuoted && matchQuoted[1] ? matchQuoted[1] : null;
   }
-	
-  loginBtn.addEventListener("click", startOAuthLogin);
-  launchBtn.addEventListener("click", launchIntegration);
-
-  window.addEventListener("message", (event) => {
-    if (event.data?.type === "oauth-code") exchangeToken(event.data.code);
-  });
 
   function base64urlEncode(buffer) {
     return btoa(String.fromCharCode(...new Uint8Array(buffer)))
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
 
+  // === INITIALIZATION SEQUENCE ===
+  updateStatus("🔄 Loading configuration...");
+  loadConfig().then(success => {
+    if (!success) {
+      disableActionButtons(true);
+      return;
+    }
+    loginBtn.addEventListener("click", startOAuthLogin);
+    launchBtn.addEventListener("click", launchIntegration);
+    updateStatus("✅ Configuration ready. Please log in.");
+  });
+
+  window.addEventListener("message", (event) => {
+    if (event.data?.type === "oauth-code") exchangeToken(event.data.code);
+  });
 });
+
 </script>
 </head>
 <body>
