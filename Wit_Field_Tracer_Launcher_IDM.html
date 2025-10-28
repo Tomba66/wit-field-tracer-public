@@ -348,13 +348,22 @@ document.addEventListener("DOMContentLoaded", async function () {
   async function launchIntegration() {
     const env = CONFIG.environments[selectedEnv];
     const accessToken = sessionStorage.getItem("access_token");
+	const sessionKey = crypto.randomUUID();
 
-    if (!accessToken) {
+	sessionStorage.setItem("sessionKey", sessionKey);
+	
+	if (!accessToken) {
       updateStatus("❌ Not authenticated. Please log in first.");
       return;
     }
 
     updateStatus("🚀 Launching integration...");
+
+	const xmlBody = `
+	  <LaunchRequest>
+	    <SessionKey>${sessionKey}</SessionKey>
+	  </LaunchRequest>
+	`.trim();
 
     try {
       const response = await fetch(CONFIG.server.proxyUrl, {
@@ -368,7 +377,7 @@ document.addEventListener("DOMContentLoaded", async function () {
             "X-Tenant": env.tenantId.toLowerCase(),
             "Content-Type": "text/plain"
           },
-          body: ""
+          body: xmlBody
         })
       });
 
