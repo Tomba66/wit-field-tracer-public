@@ -495,38 +495,51 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
     };
 
-    // Manual refresh
     refreshBtn.onclick = checkStatusAndMaybeDownload;
 
     // Auto-check every 30s
     autoCheckInterval = setInterval(checkStatusAndMaybeDownload, 30000);
-    // (opcionális) induljon azonnal egy első ellenőrzéssel:
+
     await checkStatusAndMaybeDownload();
   }
 
-  async function downloadDeliveredFile() {
-    try {
-      updateStatus("📥 Downloading integration output...");
-      const res = await fetch(CONFIG.server.deliverableFileUrl, { method: "GET" });
-      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+async function downloadDeliveredFile() {
+  try {
+    updateStatus("📥 Downloading integration output...");
 
-      const blob = await res.blob();
+    const sessionKey = sessionStorage.getItem("sessionKey");
+    const res = await fetch(`${CONFIG.server.deliverableFileUrl}?sessionKey=${encodeURIComponent(sessionKey)}`, { method: "GET" });
+
+    if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+
+    const blob = await res.blob();
+
+    let fileName = res.headers.get("X-File-Name");
+    
+    if (!fileName) {
       const disposition = res.headers.get("Content-Disposition");
-      const fileName = getFilenameFromDisposition(disposition) || "download.html";
-
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      updateStatus("✅ File downloaded successfully.");
-    } catch (e) {
-      console.error(e);
-      updateStatus("❌ Failed to download file.");
+      fileName = getFilenameFromDisposition(disposition);
     }
+
+    if (!fileName) fileName = "download.html";
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    updateStatus("✅ File downloaded successfully.");
+
+    // Takarítás szerveren
+    await fetch(`${CONFIG.server.deliverableFileUrl}?sessionKey=${encodeURIComponent(sessionKey)}`, { method: "DELETE" });
+  } catch (e) {
+    console.error(e);
+    updateStatus("❌ Failed to download file.");
   }
+}
+
 
   function getFilenameFromDisposition(disposition) {
     if (!disposition) return null;
